@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>杰哥专用-移动专班工作记录系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        #appContainer.locked { filter: blur(30px); pointer-events: none; }
+        .transition-all { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .tab-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
+        .dropdown-container:hover .dropdown-menu { display: block; opacity: 1; transform: translateY(0); }
+        .dropdown-menu { display: none; opacity: 0; transform: translateY(10px); padding-top: 12px; margin-top: -4px; transition: all 0.2s ease; }
+        select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1rem; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900 font-sans">
+
+    <!-- 验证层 -->
+    <div id="authLayer" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-xl transition-all">
+        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-sm mx-4 text-center border border-white/10">
+            <h2 class="text-3xl font-black mb-2 tracking-tighter text-slate-800">安全验证</h2>
+            <p class="text-slate-400 text-sm mb-8">身份识别以进入系统</p>
+            <input type="password" id="pw" placeholder="输入密码" class="w-full px-6 py-4 bg-slate-100 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-center text-3xl tracking-[0.4em] mb-6">
+            <button onclick="handleAuth()" id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-xl transition-all active:scale-95">开启系统</button>
+            <p id="authError" class="text-red-500 text-xs mt-4 opacity-0">密码错误</p>
+        </div>
+    </div>
+
+    <!-- 编辑模态框 -->
+    <div id="editModal" class="fixed inset-0 z-[110] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white/20">
+            <div class="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 class="font-black text-xl tracking-tight text-slate-800 uppercase">修改记录内容</h3>
+                <button onclick="closeEditModal()" class="text-slate-300 hover:text-slate-500 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="editForm" class="p-8 space-y-4">
+                <input type="hidden" id="edit_id">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="date" id="edit_log_date" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none">
+                    <input type="text" id="edit_contact" required placeholder="对接人" class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <select id="edit_company" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none">
+                        <option value="市公司">市公司</option>
+                        <option value="东区公司">东区公司</option>
+                        <option value="西区公司">西区公司</option>
+                        <option value="仁和区公司">仁和区公司</option>
+                        <option value="钒高公司">钒高公司</option>
+                        <option value="盐边公司">盐边公司</option>
+                        <option value="米易公司">米易公司</option>
+                    </select>
+                    <select id="edit_mode" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none">
+                        <option value="电话">电话</option>
+                        <option value="微信">微信</option>
+                        <option value="现场">现场</option>
+                    </select>
+                </div>
+                <textarea id="edit_content" rows="3" required placeholder="具体详情" class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none resize-none"></textarea>
+                <input type="text" id="edit_follow_up" required placeholder="后续待办" class="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none">
+                <div class="flex gap-4 pt-4">
+                    <button type="button" onclick="closeEditModal()" class="flex-1 px-6 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl">取消</button>
+                    <button type="submit" class="flex-1 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">确认保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="appContainer" class="locked max-w-7xl mx-auto px-4 py-8 lg:py-12 transition-all">
+        <header class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+            <div class="flex items-center gap-6">
+                <!-- 已修改 Logo 文字 -->
+                <h1 class="text-3xl font-black text-slate-900 tracking-tighter">移动专班工作记录<span class="text-blue-600 font-serif">.</span></h1>
+                <nav class="flex gap-6 border-l pl-6 border-slate-200">
+                    <button onclick="switchView('records')" id="tab-records" class="text-sm font-bold tracking-widest uppercase transition-all tab-active pb-1">日常记录</button>
+                    <button onclick="switchView('analysis')" id="tab-analysis" class="text-sm font-bold tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 pb-1">汇总统计</button>
+                </nav>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="dropdown-container relative inline-block">
+                    <button class="px-5 py-2.5 text-xs font-bold text-slate-600 bg-white rounded-xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
+                        系统管理
+                    </button>
+                    <div class="dropdown-menu absolute right-0 w-52 z-50">
+                        <div class="bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden py-1">
+                            <button onclick="exportToCSV()" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3">导出筛选报表 (CSV)</button>
+                            <button onclick="downloadBackup()" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3">下载全量备份 (JSON)</button>
+                            <label class="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 cursor-pointer">
+                                恢复历史数据
+                                <input type="file" id="restoreFile" accept=".json" class="hidden" onchange="restoreFromBackup(event)">
+                            </label>
+                            <div class="border-t border-slate-50 my-1"></div>
+                            <button onclick="handleLogout()" class="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-3">登出系统</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 记录模式 -->
+        <div id="view-records" class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <div class="lg:col-span-4">
+                <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 sticky top-8">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8">新增工作记录</h3>
+                    <form id="logForm" class="space-y-4">
+                        <input type="date" id="log_date" required class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500">
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="text" id="contact" required placeholder="对接人" class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none">
+                            <select id="mode" class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none">
+                                <option value="电话">电话</option>
+                                <option value="微信">微信</option>
+                                <option value="现场">现场</option>
+                            </select>
+                        </div>
+                        <select id="company" required class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none">
+                            <option value="" disabled selected>选择所属公司</option>
+                            <option value="市公司">市公司</option>
+                            <option value="东区公司">东区公司</option>
+                            <option value="西区公司">西区公司</option>
+                            <option value="仁和区公司">仁和区公司</option>
+                            <option value="钒高公司">钒高公司</option>
+                            <option value="盐边公司">盐边公司</option>
+                            <option value="米易公司">米易公司</option>
+                        </select>
+                        <textarea id="content" rows="4" required placeholder="核心沟通细节..." class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none resize-none"></textarea>
+                        <input type="text" id="follow_up" required placeholder="后续待办事项" class="w-full px-4 py-3 bg-slate-50 border rounded-2xl outline-none">
+                        <button type="submit" id="saveBtn" class="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-xl transition-all active:scale-95 mt-4">同步至云端</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex items-center gap-4">
+                    <div class="p-1 text-slate-300"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></div>
+                    <input type="text" id="searchBar" placeholder="快捷检索日期、对接人、公司或工作内容..." class="w-full bg-transparent outline-none text-slate-600 font-semibold">
+                </div>
+                <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 text-[10px] text-slate-400 font-black tracking-widest uppercase border-b">
+                                <tr>
+                                    <th class="px-8 py-5">时间与对接人</th>
+                                    <th class="px-8 py-5">记录详情</th>
+                                    <th class="px-8 py-5 text-right">管理</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTable" class="divide-y divide-slate-100 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分析模式 -->
+        <div id="view-analysis" class="hidden space-y-8">
+            <div class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200">
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">开始时间</label>
+                        <input type="date" id="filter-start" class="w-full px-4 py-2 bg-slate-50 border rounded-xl outline-none text-sm">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">结束时间</label>
+                        <input type="date" id="filter-end" class="w-full px-4 py-2 bg-slate-50 border rounded-xl outline-none text-sm">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">关键词筛选</label>
+                        <input type="text" id="filter-text" placeholder="人员/公司/内容" class="w-full px-4 py-2 bg-slate-50 border rounded-xl outline-none text-sm">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">沟通形式</label>
+                        <select id="filter-mode" class="w-full px-4 py-2 bg-slate-50 border rounded-xl outline-none text-sm">
+                            <option value="all">全部</option>
+                            <option value="电话">电话</option>
+                            <option value="微信">微信</option>
+                            <option value="现场">现场</option>
+                        </select>
+                    </div>
+                    <button onclick="runAnalysis()" class="bg-blue-600 text-white font-bold py-2 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">执行深度汇总</button>
+                </div>
+            </div>
+
+            <!-- 统计卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">沟通总频次</p>
+                    <div id="stat-total" class="text-4xl font-black text-blue-600">0</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">对接最频繁公司</p>
+                    <div id="stat-top-company" class="text-xl font-black text-slate-800 truncate leading-tight mt-1">-</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">活跃对接人</p>
+                    <div id="stat-top-contact" class="text-xl font-black text-slate-800 truncate mt-1">-</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">现场支撑占比</p>
+                    <div id="stat-visit-rate" class="text-xl font-black text-slate-800 mt-1">0%</div>
+                </div>
+            </div>
+
+            <!-- 可视化 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 text-center">各公司业务量分布 (柱状图)</h4>
+                    <div class="h-64"><canvas id="companyChart"></canvas></div>
+                </div>
+                <div class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 text-center">沟通方式占比 (饼图)</h4>
+                    <div class="h-64"><canvas id="modeChart"></canvas></div>
+                </div>
+            </div>
+            
+            <!-- 明细表 -->
+            <div class="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
+                <div class="px-8 py-5 border-b bg-slate-50/50 flex justify-between items-center">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest">筛选数据汇总明细表</h4>
+                </div>
+                <div class="overflow-x-auto max-h-[400px]">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 sticky top-0 font-bold text-slate-400 uppercase border-b">
+                            <tr>
+                                <th class="px-8 py-3">日期</th>
+                                <th class="px-8 py-3">对接人</th>
+                                <th class="px-8 py-3">公司</th>
+                                <th class="px-8 py-3">方式</th>
+                                <th class="px-8 py-3">工作记录摘要</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analysisTable" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "https://work-log-api.lukinzpkjstk.workers.dev";
+        let masterData = [];
+        let charts = {};
+
+        async function cloudApi(path, options = {}) {
+            const token = sessionStorage.getItem('auth_token');
+            const headers = { ...options.headers, 'X-Auth-Key': token, 'Content-Type': 'application/json' };
+            const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+            if (res.status === 401) { handleLogout(); throw "Auth Expired"; }
+            return res;
+        }
+
+        async function handleAuth() {
+            const pw = document.getElementById('pw').value.trim();
+            const btn = document.getElementById('loginBtn');
+            btn.innerText = "系统同步中...";
+            try {
+                const res = await fetch(`${API_BASE}/api/logs`, { headers: { 'X-Auth-Key': pw } });
+                if (res.ok) {
+                    sessionStorage.setItem('auth_token', pw);
+                    unlockApp();
+                } else { throw "Error"; }
+            } catch (e) {
+                document.getElementById('authError').style.opacity = '1';
+                btn.innerText = "开启系统";
+                setTimeout(() => document.getElementById('authError').style.opacity = '0', 2500);
+            }
+        }
+
+        function unlockApp() {
+            document.getElementById('authLayer').classList.add('opacity-0', 'pointer-events-none');
+            document.getElementById('appContainer').classList.remove('locked');
+            fetchData();
+        }
+
+        function handleLogout() { sessionStorage.removeItem('auth_token'); location.reload(); }
+
+        async function fetchData() {
+            const res = await cloudApi('/api/logs');
+            masterData = await res.json();
+            renderList(masterData);
+            const today = new Date().toISOString().slice(0, 10);
+            const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            document.getElementById('filter-start').value = monthAgo;
+            document.getElementById('filter-end').value = today;
+        }
+
+        function switchView(view) {
+            document.getElementById('view-records').classList.add('hidden');
+            document.getElementById('view-analysis').classList.add('hidden');
+            document.getElementById('tab-records').classList.remove('tab-active', 'text-slate-900');
+            document.getElementById('tab-analysis').classList.remove('tab-active', 'text-slate-900');
+            document.getElementById('tab-records').classList.add('text-slate-400');
+            document.getElementById('tab-analysis').classList.add('text-slate-400');
+
+            document.getElementById('view-' + view).classList.remove('hidden');
+            document.getElementById('tab-' + view).classList.add('tab-active', 'text-slate-900');
+            document.getElementById('tab-' + view).classList.remove('text-slate-400');
+            if (view === 'analysis') runAnalysis();
+        }
+
+        function renderList(data) {
+            const table = document.getElementById('dataTable');
+            table.innerHTML = data.map(log => `
+                <tr class="hover:bg-blue-50/20 group transition-all">
+                    <td class="px-8 py-6">
+                        <div class="text-[10px] font-black text-slate-300 mb-1 uppercase tracking-tighter">${log.log_date}</div>
+                        <div class="text-blue-600 font-black text-base leading-none">${log.contact}</div>
+                        <div class="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest truncate w-32">${log.company}</div>
+                    </td>
+                    <td class="px-8 py-6 max-w-md">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded font-black italic uppercase">${log.mode}</span>
+                            <span class="text-[10px] text-orange-600 font-bold tracking-tight">后续: ${log.follow_up}</span>
+                        </div>
+                        <p class="text-slate-600 text-xs leading-relaxed line-clamp-1">${log.content}</p>
+                    </td>
+                    <td class="px-8 py-6 text-right">
+                        <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onclick='openEditModal(${JSON.stringify(log)})' class="text-slate-300 hover:text-blue-600 p-2 transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                            <button onclick="deleteRow(${log.id})" class="text-slate-300 hover:text-red-500 p-2 transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function runAnalysis() {
+            const start = document.getElementById('filter-start').value;
+            const end = document.getElementById('filter-end').value;
+            const text = document.getElementById('filter-text').value.toLowerCase();
+            const mode = document.getElementById('filter-mode').value;
+
+            if (!start || !end) return;
+            const filtered = masterData.filter(i => {
+                const matchDate = i.log_date >= start && i.log_date <= end;
+                const matchText = !text || i.contact.toLowerCase().includes(text) || i.company.toLowerCase().includes(text) || i.content.toLowerCase().includes(text);
+                const matchMode = mode === 'all' || i.mode === mode;
+                return matchDate && matchText && matchMode;
+            });
+
+            document.getElementById('stat-total').innerText = filtered.length;
+            const companyCounts = {}; const contactCounts = {}; const modeCounts = { '电话': 0, '微信': 0, '现场': 0 };
+            filtered.forEach(i => {
+                companyCounts[i.company] = (companyCounts[i.company] || 0) + 1;
+                contactCounts[i.contact] = (contactCounts[i.contact] || 0) + 1;
+                modeCounts[i.mode] = (modeCounts[i.mode] || 0) + 1;
+            });
+
+            document.getElementById('stat-top-company').innerText = Object.entries(companyCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "-";
+            document.getElementById('stat-top-contact').innerText = Object.entries(contactCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "-";
+            document.getElementById('stat-visit-rate').innerText = filtered.length ? Math.round((modeCounts['现场'] / filtered.length) * 100) + "%" : "0%";
+
+            document.getElementById('analysisTable').innerHTML = filtered.map(log => `
+                <tr>
+                    <td class="px-8 py-3 text-slate-400 font-mono tracking-tighter">${log.log_date}</td>
+                    <td class="px-8 py-3 font-bold">${log.contact}</td>
+                    <td class="px-8 py-3">${log.company}</td>
+                    <td class="px-8 py-3 font-medium text-blue-600 uppercase">${log.mode}</td>
+                    <td class="px-8 py-3 text-slate-500 truncate max-w-xs">${log.content}</td>
+                </tr>
+            `).join('');
+            updateCharts(companyCounts, modeCounts);
+        }
+
+        function updateCharts(companyData, modeData) {
+            if (charts.company) charts.company.destroy();
+            if (charts.mode) charts.mode.destroy();
+            const ctxCompany = document.getElementById('companyChart').getContext('2d');
+            charts.company = new Chart(ctxCompany, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(companyData),
+                    datasets: [{ label: '记录数', data: Object.values(companyData), backgroundColor: '#3b82f6', borderRadius: 8 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            });
+            const ctxMode = document.getElementById('modeChart').getContext('2d');
+            charts.mode = new Chart(ctxMode, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(modeData),
+                    datasets: [{ data: Object.values(modeData), backgroundColor: ['#60a5fa', '#34d399', '#f59e0b'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        async function exportToCSV() {
+            const start = document.getElementById('filter-start').value;
+            const end = document.getElementById('filter-end').value;
+            const filtered = masterData.filter(i => i.log_date >= start && i.log_date <= end);
+            if (!filtered.length) return alert("无可导出数据");
+            const headers = ["日期", "对接人", "公司", "方式", "内容", "后续处理"];
+            const rows = filtered.map(i => [i.log_date, i.contact, i.company, i.mode, i.content.replace(/\n/g," "), i.follow_up]);
+            const csv = "\uFEFF" + headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `分析报表_${start}_${end}.csv`;
+            link.click();
+        }
+
+        async function downloadBackup() {
+            const blob = new Blob([JSON.stringify(masterData, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `数据备份_${new Date().toLocaleDateString()}.json`;
+            link.click();
+        }
+
+        async function restoreFromBackup(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const items = JSON.parse(event.target.result);
+                await cloudApi('/api/logs/bulk', { method: 'POST', body: JSON.stringify(items) });
+                fetchData();
+                alert("数据恢复成功");
+            };
+            reader.readAsText(file);
+        }
+
+        async function deleteRow(id) {
+            if (confirm("确定永久删除此条记录？")) {
+                await cloudApi(`/api/logs/${id}`, { method: 'DELETE' });
+                fetchData();
+            }
+        }
+
+        function openEditModal(log) {
+            document.getElementById('edit_id').value = log.id;
+            document.getElementById('edit_log_date').value = log.log_date;
+            document.getElementById('edit_contact').value = log.contact;
+            document.getElementById('edit_company').value = log.company;
+            document.getElementById('edit_mode').value = log.mode;
+            document.getElementById('edit_content').value = log.content;
+            document.getElementById('edit_follow_up').value = log.follow_up;
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }
+
+        document.getElementById('editForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit_id').value;
+            const payload = {
+                log_date: document.getElementById('edit_log_date').value,
+                contact: document.getElementById('edit_contact').value,
+                company: document.getElementById('edit_company').value,
+                mode: document.getElementById('edit_mode').value,
+                content: document.getElementById('edit_content').value,
+                follow_up: document.getElementById('edit_follow_up').value
+            };
+            await cloudApi(`/api/logs/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            closeEditModal();
+            fetchData();
+        };
+
+        document.getElementById('logForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                log_date: document.getElementById('log_date').value,
+                contact: document.getElementById('contact').value,
+                mode: document.getElementById('mode').value,
+                company: document.getElementById('company').value,
+                content: document.getElementById('content').value,
+                follow_up: document.getElementById('follow_up').value
+            };
+            await cloudApi('/api/logs', { method: 'POST', body: JSON.stringify(payload) });
+            document.getElementById('logForm').reset();
+            document.getElementById('log_date').value = new Date().toISOString().slice(0, 10);
+            fetchData();
+        };
+
+        document.getElementById('searchBar').oninput = (e) => {
+            const q = e.target.value.toLowerCase();
+            renderList(masterData.filter(i => Object.values(i).some(v => String(v).toLowerCase().includes(q))));
+        };
+
+        window.onload = () => {
+            document.getElementById('log_date').value = new Date().toISOString().slice(0, 10);
+            if (sessionStorage.getItem('auth_token')) unlockApp();
+            document.getElementById('pw').addEventListener('keypress', (e) => e.key === 'Enter' && handleAuth());
+        };
+    </script>
+</body>
+</html>
